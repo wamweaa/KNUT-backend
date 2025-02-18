@@ -49,31 +49,58 @@ class FinancialRecord(db.Model):
 
 # Routes
 
+# Define your default admin users
+DEFAULT_ADMINS = [
+    {'name': 'Admin One', 'email': 'admin1@example.com', 'tsc_number': 123456, 'password': 'adminpassword1'},
+    {'name': 'Admin Two', 'email': 'admin2@example.com', 'tsc_number': 654321, 'password': 'adminpassword2'}
+]
+
 # User registration
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json()
+    
+    # Check if the request has the required fields
     if not all(key in data for key in ['name', 'email', 'tsc_number', 'password']):
         return jsonify({'message': 'Missing required fields'}), 400
     
+    # Check if the user already exists based on email or TSC number
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'message': 'Email already exists'}), 400
     if User.query.filter_by(tsc_number=data['tsc_number']).first():
         return jsonify({'message': 'TSC Number already exists'}), 400
     
+    # Hash the password
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
     
+    # Check if this is one of the default admins
+    for admin in DEFAULT_ADMINS:
+        if data['email'] == admin['email'] and data['tsc_number'] == admin['tsc_number']:
+            # Admin credentials match, create default admin
+            new_user = User(
+                name=admin['name'],
+                email=admin['email'],
+                tsc_number=admin['tsc_number'],
+                password=bcrypt.generate_password_hash(admin['password']).decode('utf-8'),
+                role='admin'
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            return jsonify({'message': 'Admin account created successfully!'}), 201
+    
+    # If it's not a default admin, create a regular user
     new_user = User(
         name=data['name'],
         email=data['email'],
         tsc_number=data['tsc_number'],
         password=hashed_password,
-        role=data.get('role', 'user')
+        role=data.get('role', 'user')  # Default role is 'user'
     )
+    
     db.session.add(new_user)
     db.session.commit()
+    
     return jsonify({'message': 'User registered successfully!'}), 201
-
 # User login
 @app.route('/api/login', methods=['POST'])
 def login():
