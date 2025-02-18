@@ -12,7 +12,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///financial_data.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://knut_y9i6_user:0IujIHlJIkOznIHpmb1r5sxWcbvycYt0@dpg-cuq3ua3tq21c73a1tg8g-a.oregon-postgres.render.com/knut_y9i6'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key')
 
