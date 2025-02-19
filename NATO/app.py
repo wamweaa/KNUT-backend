@@ -1,3 +1,4 @@
+import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -5,7 +6,6 @@ from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import datetime
 import os
-
 
 # Initialize app
 app = Flask(__name__)
@@ -20,6 +20,7 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key')
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
+logging.basicConfig(level=logging.INFO)
 
 # Models
 class User(db.Model):
@@ -31,6 +32,7 @@ class User(db.Model):
     role = db.Column(db.String(10), default='user', nullable=False)  # 'user' or 'admin'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     records = db.relationship('FinancialRecord', backref='user', lazy=True)
+
 class FinancialRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -42,66 +44,67 @@ class FinancialRecord(db.Model):
     repaid = db.Column(db.Float, default=0.0)
     shares = db.Column(db.Float, default=0.0)
     interest = db.Column(db.Float, default=0.0)
-    category = db.Column(db.String(50), nullable=False) #added a column for category which i will use to select the category of the financial record
+    category = db.Column(db.String(50), nullable=False)  # Category of the financial record
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
 
+# Admin Account Creation
+
+def create_admin_accounts():
+    admins = [
+        {"name": "Admin One", "email": "admin1@example.com", "tsc_number": 100001, "password": os.getenv("ADMIN1_PASS", "Admin@123")},
+        {"name": "Admin Two", "email": "admin2@example.com", "tsc_number": 100002, "password": os.getenv("ADMIN2_PASS", "Admin@123")}
+    ]
+    
+    try:
+        with app.app_context():
+            for admin in admins:
+                existing_admin = User.query.filter_by(email=admin["email"]).first()
+                if not existing_admin:
+                    hashed_password = bcrypt.generate_password_hash(admin["password"]).decode('utf-8')
+                    new_admin = User(
+                        name=admin["name"],
+                        email=admin["email"],
+                        tsc_number=admin["tsc_number"],
+                        password=hashed_password,
+                        role="admin"
+                    )
+                    db.session.add(new_admin)
+            
+            db.session.commit()
+            logging.info("Admin accounts created successfully!")
+    
+    except Exception as e:
+        logging.error(f"Error creating admin accounts: {e}")
+
+# Ensure this function runs on startup
+create_admin_accounts()
 
 # Routes
 
-# Define your default admin users
-DEFAULT_ADMINS = [
-    {'name': 'Admin One', 'email': 'admin1@example.com', 'tsc_number': 123456, 'password': 'adminpassword1'},
-    {'name': 'Admin Two', 'email': 'admin2@example.com', 'tsc_number': 654321, 'password': 'adminpassword2'}
-]
-
-# User registration
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json()
-    
-    # Check if the request has the required fields
     if not all(key in data for key in ['name', 'email', 'tsc_number', 'password']):
         return jsonify({'message': 'Missing required fields'}), 400
     
-    # Check if the user already exists based on email or TSC number
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'message': 'Email already exists'}), 400
     if User.query.filter_by(tsc_number=data['tsc_number']).first():
         return jsonify({'message': 'TSC Number already exists'}), 400
     
-    # Hash the password
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
     
-    # Check if this is one of the default admins
-    for admin in DEFAULT_ADMINS:
-        if data['email'] == admin['email'] and data['tsc_number'] == admin['tsc_number']:
-            # Admin credentials match, create default admin
-            new_user = User(
-                name=admin['name'],
-                email=admin['email'],
-                tsc_number=admin['tsc_number'],
-                password=bcrypt.generate_password_hash(admin['password']).decode('utf-8'),
-                role='admin'
-            )
-            db.session.add(new_user)
-            db.session.commit()
-            return jsonify({'message': 'Admin account created successfully!'}), 201
-    
-    # If it's not a default admin, create a regular user
     new_user = User(
         name=data['name'],
         email=data['email'],
         tsc_number=data['tsc_number'],
         password=hashed_password,
-        role=data.get('role', 'user')  # Default role is 'user'
+        role=data.get('role', 'user')
     )
-    
     db.session.add(new_user)
     db.session.commit()
-    
     return jsonify({'message': 'User registered successfully!'}), 201
-# User login
+
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
